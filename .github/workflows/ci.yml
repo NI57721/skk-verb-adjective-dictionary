@@ -1,0 +1,51 @@
+name: CI
+
+'on':
+  push:
+    branches: [main]
+    tags: ['v[0-9]*']
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  test-and-build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: '4.0'
+          bundler-cache: true
+      - name: Run tests and RuboCop
+        run: bundle exec rake
+      - name: Build the dictionary
+        run: bundle exec rake build
+      - name: Upload the dictionary
+        if: github.event_name == 'push'
+        uses: actions/upload-artifact@v7
+        with:
+          name: SKK-JISYO.verb-adjective
+          path: build/SKK-JISYO.verb-adjective
+          if-no-files-found: error
+
+  release:
+    if: github.event_name == 'push' && github.ref_type == 'tag'
+    needs: test-and-build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          name: SKK-JISYO.verb-adjective
+      - name: Publish the dictionary
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: gh release create --verify-tag --generate-notes -- "${RELEASE_TAG}" SKK-JISYO.verb-adjective

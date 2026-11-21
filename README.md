@@ -1,10 +1,15 @@
 # skk-verb-adjective-dictionary
 
+[![CI](https://github.com/NI57721/skk-verb-adjective-dictionary/actions/workflows/ci.yml/badge.svg?branch=main&event=push)](https://github.com/NI57721/skk-verb-adjective-dictionary/actions/workflows/ci.yml)
+
 [vim-caskk](https://github.com/NI57721/vim-caskk) 用の動詞・形容詞の SKK 辞書です。辞書は活用情報をアノテーションに持つ語幹で構成されており、[vim-caskk](https://github.com/NI57721/vim-caskk) が入力された送り仮名と組み合わせて変換します。
 
 ```text
 あいいれ /相容れ;@verb-1/相いれ;@verb-1/相入れ;@verb-1/
 ```
+
+## 辞書をダウンロード
+https://github.com/NI57721/skk-verb-adjective-dictionary/releases/latest/download/SKK-JISYO.verb-adjective
 
 ## ビルド
 
