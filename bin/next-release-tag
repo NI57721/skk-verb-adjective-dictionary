@@ -4,6 +4,8 @@ require 'digest'
 require 'json'
 require 'open3'
 
+source_only = ARGV.first == '--source-only'
+ARGV.shift if source_only
 previous_tag, previous_dictionary, current_dictionary = ARGV
 version = /\Av(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)\z/.match(previous_tag)
 abort "Expected a stable release tag, got #{previous_tag.inspect}" unless version
@@ -27,6 +29,6 @@ major, minor, patch = version.captures.map(&:to_i)
 
 if current_checksum != previous_checksum
   puts "v#{major}.#{minor + 1}.0"
-elsif Digest::SHA256.file(current_dictionary).hexdigest != Digest::SHA256.file(previous_dictionary).hexdigest
+elsif !source_only && Digest::SHA256.file(current_dictionary).hexdigest != Digest::SHA256.file(previous_dictionary).hexdigest
   puts "v#{major}.#{minor}.#{patch + 1}"
 end

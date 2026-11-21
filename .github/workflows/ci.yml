@@ -6,18 +6,51 @@ name: CI
     tags: ['v[0-9]*']
   pull_request:
     branches: [main]
+  schedule:
+    - cron: '23 2 * * 1'
   workflow_dispatch:
+    inputs:
+      update_upstream:
+        description: Check upstream and release any dictionary data update
+        type: boolean
+        default: false
 
 permissions:
   contents: read
 
+defaults:
+  run:
+    shell: bash
+
 jobs:
   test-and-build:
+    if: github.event_name != 'workflow_dispatch' || github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
+    env:
+      UPDATE_UPSTREAM: ${{ github.event_name == 'schedule' || inputs.update_upstream == true }}
     steps:
       - uses: actions/checkout@v6
         with:
           persist-credentials: false
+      - uses: actions/checkout@v6
+        if: env.UPDATE_UPSTREAM == 'true'
+        with:
+          repository: hiroshi-manabe/japanese_verb_adj_list
+          ref: master
+          path: .upstream
+          sparse-checkout: /japanese_verb_adj_list.tsv
+          sparse-checkout-cone-mode: false
+          persist-credentials: false
+      - name: Pin changed upstream data
+        if: env.UPDATE_UPSTREAM == 'true'
+        run: |
+          commit=$(git -C .upstream rev-parse HEAD)
+          git -C .upstream show HEAD:japanese_verb_adj_list.tsv > "$RUNNER_TEMP/upstream.tsv"
+          checksum=$(sha256sum "$RUNNER_TEMP/upstream.tsv" | cut -d ' ' -f 1)
+          pinned_checksum=$(jq -er '.sha256' data/upstream.json)
+          if [ "$checksum" != "$pinned_checksum" ]; then
+            jq -n --arg commit "$commit" --arg sha256 "$checksum" '{commit: $commit, sha256: $sha256}' > data/upstream.json
+          fi
       - uses: ruby/setup-ruby@v1
         with:
           ruby-version: '4.0'
@@ -27,33 +60,47 @@ jobs:
       - name: Build the dictionary
         run: bundle exec rake build
       - name: Upload the dictionary
-        if: github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main')
+        if: github.event_name != 'pull_request'
         uses: actions/upload-artifact@v7
         with:
           name: SKK-JISYO.verb-adjective
           path: build/SKK-JISYO.verb-adjective
           if-no-files-found: error
+      - name: Upload the tested upstream lock
+        if: env.UPDATE_UPSTREAM == 'true'
+        uses: actions/upload-artifact@v7
+        with:
+          name: upstream-lock
+          path: data/upstream.json
+          if-no-files-found: error
 
   release:
-    if: (github.event_name == 'push' && github.ref_type == 'tag') || (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main')
+    if: (github.event_name == 'push' && github.ref_type == 'tag') || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
     needs: test-and-build
     runs-on: ubuntu-latest
     concurrency: dictionary-release
     permissions:
       contents: write
+    env:
+      UPDATE_UPSTREAM: ${{ github.event_name == 'schedule' || inputs.update_upstream == true }}
     steps:
       - uses: actions/checkout@v6
-        if: github.event_name == 'workflow_dispatch'
+        if: github.event_name != 'push'
         with:
           fetch-depth: 0
-          persist-credentials: false
+          persist-credentials: ${{ env.UPDATE_UPSTREAM == 'true' }}
       - uses: actions/download-artifact@v8
         with:
           name: SKK-JISYO.verb-adjective
           path: build
+      - uses: actions/download-artifact@v8
+        if: env.UPDATE_UPSTREAM == 'true'
+        with:
+          name: upstream-lock
+          path: data
       - name: Determine the next version
         id: version
-        if: github.event_name == 'workflow_dispatch'
+        if: github.event_name != 'push'
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
@@ -61,14 +108,15 @@ jobs:
           previous=$(gh release view --json tagName --jq '.tagName')
           git merge-base --is-ancestor "$previous" "$GITHUB_SHA"
           previous_dictionary="$RUNNER_TEMP/previous-dictionary"
-          gh release download "$previous" --pattern SKK-JISYO.verb-adjective --output "$previous_dictionary"
-          next=$(ruby bin/next-release-tag "$previous" "$previous_dictionary" build/SKK-JISYO.verb-adjective)
+          if [ "$UPDATE_UPSTREAM" = true ]; then
+            next=$(ruby bin/next-release-tag --source-only "$previous")
+          else
+            gh release download "$previous" --pattern SKK-JISYO.verb-adjective --output "$previous_dictionary"
+            next=$(ruby bin/next-release-tag "$previous" "$previous_dictionary" build/SKK-JISYO.verb-adjective)
+          fi
           if [ -z "$next" ]; then
             echo 'No dictionary changes to release.' >> "$GITHUB_STEP_SUMMARY"
           else
-            if git show-ref --verify --quiet "refs/tags/$next"; then
-              test "$(git rev-list -n 1 "refs/tags/$next")" = "$GITHUB_SHA"
-            fi
             echo "tag=$next" >> "$GITHUB_OUTPUT"
             echo "previous=$previous" >> "$GITHUB_OUTPUT"
           fi
@@ -80,12 +128,28 @@ jobs:
           RELEASE_TAG: ${{ github.ref_name }}
         run: gh release create --verify-tag --generate-notes -- "${RELEASE_TAG}" build/SKK-JISYO.verb-adjective
       - name: Create the next release
-        if: github.event_name == 'workflow_dispatch' && steps.version.outputs.tag != ''
+        if: steps.version.outputs.tag != ''
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
           RELEASE_TAG: ${{ steps.version.outputs.tag }}
           PREVIOUS_TAG: ${{ steps.version.outputs.previous }}
         run: |
-          gh release create "$RELEASE_TAG" --target "$GITHUB_SHA" --generate-notes \
+          if [ "$UPDATE_UPSTREAM" = true ] && ! git diff --quiet -- data/upstream.json; then
+            upstream_commit=$(jq -er '.commit' data/upstream.json)
+            git -c user.name='github-actions[bot]' -c user.email='41898282+github-actions[bot]@users.noreply.github.com' \
+              commit -m "Update upstream dictionary to ${upstream_commit:0:7}" -- data/upstream.json
+          fi
+          target=$(git rev-parse HEAD)
+          if git show-ref --verify --quiet "refs/tags/$RELEASE_TAG"; then
+            test "$(git rev-list -n 1 "refs/tags/$RELEASE_TAG")" = "$target"
+          fi
+          if [ "$UPDATE_UPSTREAM" = true ]; then
+            if [ "$target" != "$GITHUB_SHA" ]; then
+              git push origin HEAD:refs/heads/main
+            else
+              test "$(git ls-remote origin refs/heads/main | cut -f 1)" = "$target"
+            fi
+          fi
+          gh release create "$RELEASE_TAG" --target "$target" --generate-notes \
             --notes-start-tag "$PREVIOUS_TAG" build/SKK-JISYO.verb-adjective

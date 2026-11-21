@@ -16,17 +16,20 @@ License: https://creativecommons.org/publicdomain/zero/1.0/
 Builds and tests fetch that revision with `curl` and verify the checksum.
 The verified copy is cached under `build/source/` and can be reused offline.
 
-The [upstream dictionary workflow](../.github/workflows/upstream-dictionary.yml)
-checks the TSV on upstream's `master` branch every Monday and on demand. If the
-bytes differ, the failed step prints the proposed commit and checksum. Review
-the upstream change, update `upstream.json`, and run `bundle exec rake` and
-`bundle exec rake build` before committing the updated lock.
+The [CI workflow](../.github/workflows/ci.yml) checks upstream's `master` branch
+every Monday. To run the same check on demand, run **CI** on `main` with
+**Check upstream and release any dictionary data update** enabled.
+
+When the TSV changes, the workflow updates the lock, runs the tests and builds
+the dictionary. After those steps pass, it commits the lock to `main` as
+`Update upstream dictionary to <short SHA>` and publishes a minor release
+tagged at that commit. A failed test or build leaves `main` untouched.
 
 ## Releases
 
-Run the CI workflow manually on `main` to publish. Compared with the latest
-stable release, a changed TSV checksum increments the minor version and
-resets the patch version to zero. With the same TSV, a changed generated SKK
-file increments the patch version. If both inputs and output match, the
-workflow skips publication. A version tag pushed manually can still publish
-a release.
+To publish conversion changes, run **CI** on `main` with the upstream check
+unchecked. Compared with the latest stable release, a changed TSV checksum
+increments the minor version and resets the patch version to zero. With the
+same TSV, a changed generated SKK file increments the patch version. If both
+inputs and output match, the workflow skips publication. A version tag pushed
+manually can still publish a release.
