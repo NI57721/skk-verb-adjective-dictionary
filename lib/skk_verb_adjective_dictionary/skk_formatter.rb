@@ -9,10 +9,20 @@ module SkkVerbAdjectiveDictionary
     def self.format(entries)
       grouped = entries.group_by(&:reading)
       lines = grouped.keys.sort.map do |reading|
-        candidates = grouped.fetch(reading).map { |entry| "#{entry.spelling};#{entry.tag}" }.uniq
+        candidates = candidate_tokens(reading, grouped.fetch(reading))
         "#{reading} /#{candidates.join('/')}/"
       end
       "#{(HEADERS + lines).join("\n")}\n"
     end
+
+    def self.candidate_tokens(reading, entries)
+      alternatives = entries.reject { |entry| entry.spelling == reading }.group_by(&:tag)
+      entries.filter_map do |entry|
+        next if entry.spelling == reading && reading.match?(/\A\p{Hiragana}+\z/) && alternatives.key?(entry.tag)
+
+        "#{entry.spelling};#{entry.tag}"
+      end.uniq
+    end
+    private_class_method :candidate_tokens
   end
 end
