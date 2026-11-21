@@ -1,0 +1,32 @@
+# frozen_string_literal: true
+
+require 'digest'
+require 'json'
+require 'open3'
+
+previous_tag, previous_dictionary, current_dictionary = ARGV
+version = /\Av(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)\z/.match(previous_tag)
+abort "Expected a stable release tag, got #{previous_tag.inspect}" unless version
+
+def read_git_object(revision, path)
+  stdout, stderr, status = Open3.capture3('git', 'show', "#{revision}:#{path}", binmode: true)
+  abort stderr unless status.success?
+
+  stdout
+end
+
+lock_file = 'data/upstream.json'
+_, lock_exists = Open3.capture2e('git', 'cat-file', '-e', "#{previous_tag}:#{lock_file}")
+previous_checksum = if lock_exists.success?
+                      JSON.parse(read_git_object(previous_tag, lock_file)).fetch('sha256')
+                    else
+                      Digest::SHA256.hexdigest(read_git_object(previous_tag, 'data/japanese_verb_adj_list.tsv'))
+                    end
+current_checksum = JSON.parse(File.read(lock_file)).fetch('sha256')
+major, minor, patch = version.captures.map(&:to_i)
+
+if current_checksum != previous_checksum
+  puts "v#{major}.#{minor + 1}.0"
+elsif Digest::SHA256.file(current_dictionary).hexdigest != Digest::SHA256.file(previous_dictionary).hexdigest
+  puts "v#{major}.#{minor}.#{patch + 1}"
+end

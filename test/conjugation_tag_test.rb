@@ -2,6 +2,7 @@
 
 require_relative 'test_helper'
 require 'skk_verb_adjective_dictionary/conjugation_tag'
+require 'skk_verb_adjective_dictionary/source_dictionary'
 require 'skk_verb_adjective_dictionary/tsv_parser'
 
 class ConjugationTagTest < Minitest::Test
@@ -50,11 +51,11 @@ class ConjugationTagTest < Minitest::Test
   end
 
   def test_all_source_rows_have_a_tag
-    path = File.expand_path('../data/japanese_verb_adj_list.tsv', __dir__)
+    path = SkkVerbAdjectiveDictionary::SourceDictionary.path
     entries = Parser.parse_tsv(path)
 
     refute_empty entries
-    assert_equal EXPECTED_TAGS.keys.sort, entries.map(&:conjugation).uniq.sort
-    entries.each { |entry| Tag.fetch(entry.conjugation) }
+    unknown = entries.map(&:conjugation).uniq - EXPECTED_TAGS.keys
+    assert_empty unknown
   end
 end

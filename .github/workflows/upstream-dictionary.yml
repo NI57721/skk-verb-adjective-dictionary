@@ -1,0 +1,34 @@
+name: Check upstream dictionary
+
+'on':
+  schedule:
+    - cron: '23 2 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - name: Compare with the upstream TSV
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          commit=$(gh api repos/hiroshi-manabe/japanese_verb_adj_list/commits/master --jq '.sha')
+          upstream="$RUNNER_TEMP/japanese_verb_adj_list.tsv"
+          curl --fail --silent --show-error --location --retry 3 --max-time 60 \
+            --output "$upstream" \
+            "https://raw.githubusercontent.com/hiroshi-manabe/japanese_verb_adj_list/$commit/japanese_verb_adj_list.tsv"
+          checksum=$(sha256sum "$upstream" | cut -d ' ' -f 1)
+          if [ "$checksum" = "$(jq -r '.sha256' data/upstream.json)" ]; then
+            echo 'The pinned dictionary matches upstream.'
+          else
+            echo '::error::The upstream TSV differs from the pinned copy. See data/README.md for the update procedure.'
+            jq -n --arg commit "$commit" --arg sha256 "$checksum" '{commit: $commit, sha256: $sha256}'
+            exit 1
+          fi

@@ -6,6 +6,7 @@ name: CI
     tags: ['v[0-9]*']
   pull_request:
     branches: [main]
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -26,7 +27,7 @@ jobs:
       - name: Build the dictionary
         run: bundle exec rake build
       - name: Upload the dictionary
-        if: github.event_name == 'push'
+        if: github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main')
         uses: actions/upload-artifact@v7
         with:
           name: SKK-JISYO.verb-adjective
@@ -34,18 +35,57 @@ jobs:
           if-no-files-found: error
 
   release:
-    if: github.event_name == 'push' && github.ref_type == 'tag'
+    if: (github.event_name == 'push' && github.ref_type == 'tag') || (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main')
     needs: test-and-build
     runs-on: ubuntu-latest
+    concurrency: dictionary-release
     permissions:
       contents: write
     steps:
+      - uses: actions/checkout@v6
+        if: github.event_name == 'workflow_dispatch'
+        with:
+          fetch-depth: 0
+          persist-credentials: false
       - uses: actions/download-artifact@v8
         with:
           name: SKK-JISYO.verb-adjective
+          path: build
+      - name: Determine the next version
+        id: version
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          previous=$(gh release view --json tagName --jq '.tagName')
+          git merge-base --is-ancestor "$previous" "$GITHUB_SHA"
+          previous_dictionary="$RUNNER_TEMP/previous-dictionary"
+          gh release download "$previous" --pattern SKK-JISYO.verb-adjective --output "$previous_dictionary"
+          next=$(ruby bin/next-release-tag "$previous" "$previous_dictionary" build/SKK-JISYO.verb-adjective)
+          if [ -z "$next" ]; then
+            echo 'No dictionary changes to release.' >> "$GITHUB_STEP_SUMMARY"
+          else
+            if git show-ref --verify --quiet "refs/tags/$next"; then
+              test "$(git rev-list -n 1 "refs/tags/$next")" = "$GITHUB_SHA"
+            fi
+            echo "tag=$next" >> "$GITHUB_OUTPUT"
+            echo "previous=$previous" >> "$GITHUB_OUTPUT"
+          fi
       - name: Publish the dictionary
+        if: github.event_name == 'push'
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
           RELEASE_TAG: ${{ github.ref_name }}
-        run: gh release create --verify-tag --generate-notes -- "${RELEASE_TAG}" SKK-JISYO.verb-adjective
+        run: gh release create --verify-tag --generate-notes -- "${RELEASE_TAG}" build/SKK-JISYO.verb-adjective
+      - name: Create the next release
+        if: github.event_name == 'workflow_dispatch' && steps.version.outputs.tag != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ steps.version.outputs.tag }}
+          PREVIOUS_TAG: ${{ steps.version.outputs.previous }}
+        run: |
+          gh release create "$RELEASE_TAG" --target "$GITHUB_SHA" --generate-notes \
+            --notes-start-tag "$PREVIOUS_TAG" build/SKK-JISYO.verb-adjective

@@ -14,7 +14,7 @@ https://github.com/NI57721/skk-verb-adjective-dictionary/releases/latest/downloa
 
 ## ビルド
 
-Ruby 4.0 と Bundler を使います。
+Ruby 4.0 と Bundler を使います。初回ビルドでは `curl` で固定バージョンの元辞書を取得します。[元データの取得と更新](data/README.md)
 
 ```sh
 bundle install

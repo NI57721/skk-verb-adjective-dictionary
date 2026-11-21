@@ -4,10 +4,11 @@ require 'fileutils'
 require 'tempfile'
 require_relative '../lib/skk_verb_adjective_dictionary/entry'
 require_relative '../lib/skk_verb_adjective_dictionary/skk_formatter'
+require_relative '../lib/skk_verb_adjective_dictionary/source_dictionary'
 require_relative '../lib/skk_verb_adjective_dictionary/tsv_parser'
 
 root = File.expand_path('..', __dir__)
-source = File.join(root, 'data', 'japanese_verb_adj_list.tsv')
+source = SkkVerbAdjectiveDictionary::SourceDictionary.path
 output_dir = File.join(root, 'build')
 output = File.join(output_dir, 'SKK-JISYO.verb-adjective')
 
