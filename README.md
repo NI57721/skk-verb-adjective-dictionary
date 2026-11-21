@@ -9,6 +9,7 @@
 ```
 
 ## 辞書をダウンロード
+
 https://github.com/NI57721/skk-verb-adjective-dictionary/releases/latest/download/SKK-JISYO.verb-adjective
 
 ## ビルド
