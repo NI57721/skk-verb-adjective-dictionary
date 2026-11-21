@@ -2,6 +2,8 @@
 
 source 'https://rubygems.org'
 
+gem 'csv'
+
 group :development do
   gem 'minitest'
   gem 'rake'
