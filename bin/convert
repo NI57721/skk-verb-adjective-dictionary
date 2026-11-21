@@ -1,0 +1,24 @@
+# frozen_string_literal: true
+
+require 'fileutils'
+require 'tempfile'
+require_relative '../lib/skk_verb_adjective_dictionary/entry'
+require_relative '../lib/skk_verb_adjective_dictionary/skk_formatter'
+require_relative '../lib/skk_verb_adjective_dictionary/tsv_parser'
+
+root = File.expand_path('..', __dir__)
+source = File.join(root, 'data', 'japanese_verb_adj_list.tsv')
+output_dir = File.join(root, 'build')
+output = File.join(output_dir, 'SKK-JISYO.verb-adjective')
+
+parser = SkkVerbAdjectiveDictionary::JapaneseVerbAdjList::Parser
+entries = parser.parse_tsv(source).map { |row| SkkVerbAdjectiveDictionary::Entry.from_source(row) }
+dictionary = SkkVerbAdjectiveDictionary::SkkFormatter.format(entries)
+
+FileUtils.mkdir_p(output_dir)
+Tempfile.create('.dictionary-', output_dir, encoding: Encoding::UTF_8) do |file|
+  file.write(dictionary)
+  file.chmod(0o644)
+  file.close
+  File.rename(file.path, output)
+end
