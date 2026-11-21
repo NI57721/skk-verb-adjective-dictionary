@@ -32,11 +32,20 @@ class SkkFormatterTest < Minitest::Test
       Entry.new('く', 'く', '@verb-5-m'),
       Entry.new('く', '組', '@verb-5-m'),
       Entry.new('く', 'く', '@verb-henkaku-k'),
-      Entry.new('く', '汲', '@verb-5-m'),
-      Entry.new('あどけな', 'あどけな', '@adj')
+      Entry.new('く', '汲', '@verb-5-m')
     ]
 
-    assert_equal ["あどけな /あどけな;@adj/\n", "く /組;@verb-5-m/く;@verb-henkaku-k/汲;@verb-5-m/\n"],
+    assert_equal ["く /組;@verb-5-m/く;@verb-henkaku-k/汲;@verb-5-m/\n"],
                  Formatter.format(entries).lines.drop(2)
+  end
+
+  def test_omits_keys_whose_candidates_are_all_hiragana
+    entries = [
+      Entry.new('ふてぶてし', 'ふてぶてし', '@adj'),
+      Entry.new('な', 'な', '@verb-5-k'),
+      Entry.new('な', 'な', '@verb-5-r')
+    ]
+
+    assert_empty Formatter.format(entries).lines.drop(2)
   end
 end
